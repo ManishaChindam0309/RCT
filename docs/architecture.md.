@@ -1,29 +1,47 @@
-flowchart TD
-    A["Input batch of prompts"] --> B["Prompt analysis"]
-    B --> C{"Inference mode"}
+# RCT Architecture
 
-    C -->|standard| D["Standard full-context generation"]
-    C -->|kv| E["Incremental KV-cache generation"]
-    C -->|prefix| F["Shared-prefix detection and reuse"]
-    C -->|adaptive| G["Exact complete-prompt deduplication"]
-    C -->|auto| H["Benchmark-guided workload policy"]
+## Overview
 
-    G --> I["Adaptive KV inference"]
-    H --> J{"Workload matches enabled prefix policy?"}
-    J -->|Yes| F
-    J -->|No| I
+Reusable Computation Transformer (RCT) is an experimental Transformer inference framework that explores computation reuse during autoregressive generation.
 
-    D --> K["Autoregressive decoding"]
-    E --> K
-    F --> K
-    I --> K
+The framework investigates opportunities to avoid repeated computation through prompt deduplication, key-value (KV) caching, shared-prefix generation, and adaptive inference-path selection.
 
-    K --> L["Generated outputs"]
-    M["Benchmark results and validation tests"] -. "inform policy configuration" .-> H
+## Main Components
 
-    classDef input fill:#e8f0fe,stroke:#4c6faf,color:#172b4d
-    classDef decision fill:#fff3cd,stroke:#b58b25,color:#4a3900
-    classDef process fill:#e8f5e9,stroke:#4d8b57,color:#173d20
-    class A,L input
-    class C,J decision
-    class D,E,F,G,H,I,K,M process
+### 1. Transformer Model
+
+RCT uses a Transformer model with approximately 100 million parameters. The model provides the underlying autoregressive generation capability.
+
+### 2. KV Cache
+
+The KV caching path reuses previously computed key and value states during incremental token generation, avoiding recomputation of the entire preceding context at each generation step.
+
+### 3. Shared-Prefix Generation
+
+The prefix-generation path explores reuse of shared prompt prefixes across multiple inputs in a batch.
+
+### 4. Prompt Deduplication
+
+The prompt-deduplication component identifies sufficiently similar or duplicate prompts according to the configured threshold. Its purpose is to reduce redundant processing.
+
+### 5. Adaptive Inference
+
+RCT provides multiple inference modes:
+
+- `standard`: Full-context autoregressive generation.
+- `kv`: Incremental generation using KV caching.
+- `prefix`: Shared-prefix generation.
+- `adaptive`: Exact complete-prompt deduplication with KV caching.
+- `auto`: Benchmark-guided prefix selection with adaptive KV fallback.
+
+## Adaptive Path Selection
+
+The `auto` mode selects a specialized inference path for supported workloads. Workloads outside the configured policy use the adaptive KV path.
+
+The current experimental policy is documented in the repository's inference implementation. It should be treated as workload-specific rather than a general performance guarantee.
+
+## Experimental Scope
+
+RCT is a research prototype. Its current evaluation focuses on selected batch sizes, prompt lengths, shared-prefix workloads, and a constrained GPU environment.
+
+The architecture and performance behavior require further validation across additional models, hardware platforms, and workload distributions.
