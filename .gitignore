@@ -12,3 +12,7 @@ results/
 *.log
 
 inference.py.backup
+
+# Local development backups
+model/*_backup.py
+model/*_current_working.py
