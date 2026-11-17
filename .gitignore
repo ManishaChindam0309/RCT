@@ -10,3 +10,5 @@ results/
 *.ckpt
 *.safetensors
 *.log
+
+inference.py.backup
