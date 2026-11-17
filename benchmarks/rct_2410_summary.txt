@@ -1,0 +1,56 @@
+RCT 2.4.10 - STATISTICAL THRESHOLD VALIDATION
+
+Input records: 126
+Paired observations: 42
+Workload clusters: 14
+Bootstrap samples: 20000
+
+THRESHOLD RESULTS
+
+Threshold: 0.250
+Mean speedup: 1.44019x
+Median speedup: 1.23654x
+Mean latency: 405.6820 ms
+Mean latency reduction: 24.250%
+Speedup 95% CI: [1.22120, 1.69022]
+
+Threshold: 0.375
+Mean speedup: 1.39533x
+Median speedup: 1.26292x
+Mean latency: 425.5875 ms
+Mean latency reduction: 20.824%
+Speedup 95% CI: [1.16857, 1.64994]
+
+Threshold: 0.500
+Mean speedup: 1.39345x
+Median speedup: 1.22699x
+Mean latency: 425.8518 ms
+Mean latency reduction: 20.810%
+Speedup 95% CI: [1.16546, 1.65243]
+
+PAIRED COMPARISONS
+
+0.250 vs 0.375
+Mean paired difference: +0.044856
+95% CI: [-0.000022, +0.092972]
+Clear difference: False
+
+0.250 vs 0.500
+Mean paired difference: +0.046741
+95% CI: [+0.014485, +0.083009]
+Clear difference: True
+
+0.375 vs 0.500
+Mean paired difference: +0.001885
+95% CI: [-0.014915, +0.018409]
+Clear difference: False
+
+METHODOLOGICAL LIMITATIONS
+
+Bootstrap resampling uses 14 workload clusters.
+Three seeds are nested within each workload cluster.
+The bootstrap does not create new independent workloads.
+The holdout prompts use five shared templates.
+The model is randomly initialized and untrained.
+Results apply to this CPU and tested workload.
+No general language quality conclusion is possible.

@@ -1,0 +1,58 @@
+RCT 2.4.8 - PAIRED STATISTICAL ANALYSIS
+
+Input: benchmarks/rct_247_results.csv
+Bootstrap samples: 20000
+Workload clusters: 14
+
+THRESHOLD RESULTS
+
+Threshold: 0.250
+Mean speedup: 1.3750x
+95% bootstrap CI: [1.1724, 1.5986]
+Mean latency reduction: 21.41%
+95% reduction CI: [11.25%, 31.94%]
+
+Threshold: 0.375
+Mean speedup: 1.3818x
+95% bootstrap CI: [1.1751, 1.6144]
+Mean latency reduction: 21.43%
+95% reduction CI: [11.23%, 32.30%]
+
+Threshold: 0.500
+Mean speedup: 1.3710x
+95% bootstrap CI: [1.1659, 1.6021]
+Mean latency reduction: 20.85%
+95% reduction CI: [10.64%, 31.82%]
+
+PAIRED THRESHOLD COMPARISONS
+
+0.250 versus 0.375
+Mean speedup difference: -0.0068
+95% difference CI: [-0.0460, 0.0352]
+Geometric speedup ratio A/B: 0.9977
+95% ratio CI: [0.9675, 1.0331]
+No clear difference: paired 95% CI includes zero
+
+0.250 versus 0.500
+Mean speedup difference: 0.0041
+95% difference CI: [-0.0379, 0.0470]
+Geometric speedup ratio A/B: 1.0059
+95% ratio CI: [0.9738, 1.0423]
+No clear difference: paired 95% CI includes zero
+
+0.375 versus 0.500
+Mean speedup difference: 0.0109
+95% difference CI: [-0.0102, 0.0335]
+Geometric speedup ratio A/B: 1.0083
+95% ratio CI: [0.9931, 1.0250]
+No clear difference: paired 95% CI includes zero
+
+IMPORTANT LIMITATIONS
+
+This analysis reuses the existing RCT 2.4.7 results.
+It does not add new seeds or benchmark repetitions.
+Bootstrap resampling is clustered by workload configuration.
+Only 14 workload configurations are available.
+Confidence intervals describe this sampled workload set;
+they do not establish production performance.
+The model is randomly initialized and untrained.

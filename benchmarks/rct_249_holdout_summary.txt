@@ -1,0 +1,44 @@
+RCT 2.4.9 - INDEPENDENT HOLDOUT VALIDATION
+
+Holdout prompts: 400
+Workload configurations: 14
+Seeds: [2491, 2492, 2493]
+Thresholds: [0.25, 0.375, 0.5]
+Timing repetitions: 5
+CPU threads: 4
+Generated tokens: 8
+
+THRESHOLD SUMMARY
+
+Threshold: 0.250
+Records: 42
+Mean speedup: 1.4402x
+Median speedup: 1.2365x
+Mean latency reduction: 24.25%
+
+Threshold: 0.375
+Records: 42
+Mean speedup: 1.3953x
+Median speedup: 1.2629x
+Mean latency reduction: 20.82%
+
+Threshold: 0.500
+Records: 42
+Mean speedup: 1.3934x
+Median speedup: 1.2270x
+Mean latency reduction: 20.81%
+
+CORRECTNESS
+
+Combined: 42/42
+Adaptive: 126/126
+KV reproducibility: 42/42
+Decision correctness: 126/126
+
+LIMITATIONS
+
+The model is randomly initialized and untrained.
+The holdout corpus uses five shared prompt templates.
+This is controlled workload validation, not production traffic.
+KV memory values are theoretical full-capacity estimates.
+One CPU machine and four CPU threads were used.

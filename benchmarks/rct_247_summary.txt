@@ -1,0 +1,24 @@
+RCT 2.4.7 - ADAPTIVE THRESHOLD VALIDATION
+
+Total records: 126
+Correctness: 126/126
+
+Threshold comparison:
+25%    Mean speedup: 1.375x    Latency reduction: 21.41%
+37.5%  Mean speedup: 1.382x    Latency reduction: 21.43%
+50%    Mean speedup: 1.371x    Latency reduction: 20.85%
+
+Provisional threshold: 25%
+Best observed mean threshold: 37.5%
+
+Dataset: 200 hand-authored prompts
+Seeds: 2461, 2462, 2463
+Batch sizes: 4, 8, 16
+Generated tokens: 8
+Model: RCT 100M (randomly initialized)
+Hardware: CPU, 4 threads
+
+CSV: benchmarks/rct_247_results.csv
+
+Caveat: Synthetic workload validation; not yet evidence of
+language-model quality or production performance.
