@@ -1,0 +1,29 @@
+flowchart TD
+    A["Input batch of prompts"] --> B["Prompt analysis"]
+    B --> C{"Inference mode"}
+
+    C -->|standard| D["Standard full-context generation"]
+    C -->|kv| E["Incremental KV-cache generation"]
+    C -->|prefix| F["Shared-prefix detection and reuse"]
+    C -->|adaptive| G["Exact complete-prompt deduplication"]
+    C -->|auto| H["Benchmark-guided workload policy"]
+
+    G --> I["Adaptive KV inference"]
+    H --> J{"Workload matches enabled prefix policy?"}
+    J -->|Yes| F
+    J -->|No| I
+
+    D --> K["Autoregressive decoding"]
+    E --> K
+    F --> K
+    I --> K
+
+    K --> L["Generated outputs"]
+    M["Benchmark results and validation tests"] -. "inform policy configuration" .-> H
+
+    classDef input fill:#e8f0fe,stroke:#4c6faf,color:#172b4d
+    classDef decision fill:#fff3cd,stroke:#b58b25,color:#4a3900
+    classDef process fill:#e8f5e9,stroke:#4d8b57,color:#173d20
+    class A,L input
+    class C,J decision
+    class D,E,F,G,H,I,K,M process
