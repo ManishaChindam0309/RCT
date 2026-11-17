@@ -1,56 +1,59 @@
 # RCT — Reusable Computation Transformer
 
-**An experimental Transformer inference framework exploring reusable computation, exact prompt deduplication, KV caching, and shared-prefix generation.**
+**An experimental Transformer inference framework exploring exact prompt deduplication, KV caching, shared-prefix reuse, and adaptive inference-path selection.**
 
-RCT is an independently developed research and engineering project focused on reducing redundant computation during Transformer inference.
+RCT is an independently developed research and engineering project investigating opportunities to avoid redundant computation during Transformer inference. The current implementation includes an approximately 100-million-parameter Transformer and experimental inference paths evaluated on a single NVIDIA GeForce RTX 2050.
 
-The project explores several inference optimization techniques, including:
+> **Project status:** Experimental implementation; performance validation and reproducibility work are ongoing. Results are workload-specific and should not be interpreted as general speedup claims.
 
-- Exact duplicate-prompt detection and deduplication.
-- Incremental autoregressive generation using KV caching.
-- Shared-prefix KV reuse.
-- Adaptive inference-path selection.
-- Benchmark-guided optimization policies.
+## Contents
 
-The current implementation includes an approximately 100-million-parameter Transformer model and experimental inference optimizations validated on an NVIDIA GeForce RTX 2050.
+- [Overview](#1-overview)
+- [Current implementation](#2-current-implementation)
+- [Model configuration](#3-model-configuration)
+- [Inference modes](#4-inference-modes)
+- [Adaptive policies](#5-adaptive-policies)
+- [Architecture](#6-architecture)
+- [Benchmark methodology and results](#7-benchmark-methodology-and-results)
+- [GPU profiling](#8-gpu-profiling)
+- [Correctness and validation](#9-correctness-and-validation)
+- [Environment](#10-environment)
+- [Repository layout](#11-repository-layout)
+- [Reproduction notes](#12-reproduction-notes)
+- [Limitations](#13-limitations)
+- [Future work](#14-future-work)
 
-**Project status:** Experimental implementation and ongoing performance validation.
+## 1. Overview
 
----
+Autoregressive Transformer inference repeatedly uses previously processed context. RCT explores whether selected computations can be reused when requests contain identical prompts or shared prefixes.
 
-## 1. Project overview
+The project investigates three questions:
 
-Transformer inference repeatedly performs computation across input tokens and generation steps. RCT investigates opportunities to reuse previously computed information when workloads contain identical prompts or shared prefixes.
+1. Can identical complete prompts in a batch avoid redundant processing?
+2. Can cached computation for a common prompt prefix be reused across sequences?
+3. Can an adaptive policy choose an optimized path only for workloads where measurements support its use?
 
-The project currently focuses on three engineering questions:
+RCT treats these as experimental engineering questions. An optimization is not assumed to help every workload: reuse overhead can offset savings, and the fallback path remains important.
 
-1. Can identical prompts within a batch be processed without unnecessarily repeating computation?
-2. Can shared prompt prefixes be reused efficiently across multiple sequences?
-3. Can an adaptive inference policy select an optimization only when benchmark evidence supports its use?
+## 2. Current implementation
 
-RCT is an experimental framework. Its optimizations are evaluated individually and under controlled workloads rather than assumed to provide universal speedups.
-
-## 2. Project status
-
-| Component | Status |
+| Component | Reported status |
 |---|---|
-| RCT 100M Transformer model | Implemented |
+| RCT ~100M Transformer model | Implemented |
 | Standard autoregressive generation | Implemented |
-| Incremental KV-cache generation | Implemented |
+| Incremental generation with KV cache | Implemented |
 | Shared-prefix generation | Implemented |
 | Automatic shared-prefix detection | Implemented |
 | Exact complete-prompt deduplication | Implemented |
 | Adaptive deduplication gate | Implemented |
 | Benchmark-guided prefix selection | Implemented |
-| Adaptive prefix gate tests | Passing 12/12 |
-| Prefix and KV benchmarks | Completed |
-| PyTorch GPU profiling | Completed |
+| Adaptive prefix-gate tests | Reported passing (12/12) |
+| Prefix and KV benchmarks | Completed for selected workloads |
+| PyTorch GPU profiling | Completed for selected workloads |
 | Broad multi-GPU validation | Pending |
 | Production readiness | Not established |
 
 ## 3. Model configuration
-
-The current RCT 100M model configuration:
 
 | Parameter | Value |
 |---|---:|
@@ -62,32 +65,21 @@ The current RCT 100M model configuration:
 | FFN intermediate size | 2,048 |
 | Maximum sequence length | 512 |
 
-The continued-training checkpoint used during development:
+The development checkpoint is reported at `checkpoints/rct100m_continued/best_model.pt` (training step 1,500; validation loss approximately 5.9246). Checkpoints are excluded from the public repository and must be obtained separately for checkpoint-dependent experiments.
 
-`checkpoints/rct100m_continued/best_model.pt`
+## 4. Inference modes
 
-Recorded checkpoint information:
+The unified inference interface is reported in `inference.py`.
 
-- Training step: 1,500
-- Validation loss: approximately 5.9246
-
-**Note:** Model checkpoints are excluded from the public Git repository. A compatible checkpoint must be obtained separately to reproduce checkpoint-dependent experiments.
-
-## 4. Inference architecture
-
-The unified inference interface is implemented in `inference.py`.
-
-Five inference modes are available:
-
-| Mode | Description |
+| Mode | Purpose |
 |---|---|
 | `standard` | Full-context autoregressive generation |
-| `kv` | Incremental autoregressive generation with KV caching |
+| `kv` | Incremental autoregressive generation using a KV cache |
 | `prefix` | Shared-prefix generation |
 | `adaptive` | Exact complete-prompt deduplication with KV caching |
 | `auto` | Benchmark-guided prefix selection with adaptive KV fallback |
 
-Example:
+Example usage (confirm the current function signature and checkpoint path against the checked-out source before running):
 
 ```python
 from inference import load_rct_inference
@@ -104,29 +96,23 @@ output = inference.generate(
 )
 ```
 
-### Inference optimization concepts
+### KV caching
 
-**KV caching**
+Stores previously computed attention keys and values so that autoregressive decoding can reuse the context state rather than recomputing the entire preceding context at every generation step.
 
-Stores previously computed attention keys and values so that autoregressive generation does not need to recompute the entire preceding context at every decoding step.
+### Shared-prefix generation
 
-**Shared-prefix generation**
+Attempts to reuse cached computations associated with a common prompt prefix across multiple sequences.
 
-Reuses cached computations associated with a common prompt prefix across multiple sequences.
+### Exact prompt deduplication
 
-**Exact prompt deduplication**
+Detects identical complete prompts within a batch and reuses work where the implementation can safely do so. The described mechanism uses exact equality, not approximate semantic similarity.
 
-Detects identical complete prompts within a batch and avoids redundant processing where the implementation can safely reuse results.
+## 5. Adaptive policies
 
-**Adaptive inference**
+### Benchmark-guided prefix selection
 
-Selects between inference paths using workload conditions and benchmark-guided policies.
-
-## 5. Adaptive prefix selection
-
-The automatic inference mode uses a restricted workload policy.
-
-The current implementation uses the following policy:
+The reported automatic policy currently enables the prefix path for a restricted set of workloads:
 
 ```python
 AUTO_PREFIX_POLICY = {
@@ -135,146 +121,89 @@ AUTO_PREFIX_POLICY = {
 }
 ```
 
-The intended workload is currently restricted to:
+The evaluated workload described in the project notes uses 32-token prompts and 8 generated tokens. The policy targets batch size 4 or 8 with a shared-prefix length of 24 tokens; other workloads fall back to the adaptive KV path.
 
-- Prompt length: 32 tokens
-- Generated tokens: 8
-- Batch size 4 with shared-prefix length 24
-- Batch size 8 with shared-prefix length 24
+**Important qualification:** The earlier eight-session dataset showed improvements for both batch 4 / prefix 24 and batch 8 / prefix 24. The later confirmation run supported batch 8 / prefix 24, while batch 4 / prefix 24 was inconclusive. The policy therefore needs further confirmation before both cases are treated as equally established.
 
-Other workloads fall back to the adaptive KV path.
+### Exact-prompt deduplication gate
 
-The restriction is intentional. An optimization that performs well for one batch size or prefix length should not automatically be applied to every workload.
-
-**Validation qualification:** Earlier multi-session experiments supported both selected workloads. A subsequent implementation change and confirmation run continued to support batch 8 / prefix 24, while batch 4 / prefix 24 was inconclusive in that latest run. Further confirmation is needed before treating both workload selections as equally established.
-
-## 6. Adaptive exact-prompt deduplication
-
-The adaptive KV inference path detects identical complete prompts within a batch.
-
-Deduplication is activated only when the duplicate rate reaches a configured threshold.
-
-Current default:
+The reported default is:
 
 ```python
 dedup_threshold = 0.75
 ```
 
-The threshold was selected experimentally to balance potential computation reuse against deduplication overhead.
+Deduplication is activated when the duplicate rate reaches the configured threshold. This is an experimentally selected, workload-dependent setting—not a universal optimum.
 
-The mechanism uses exact prompt equality rather than approximate similarity.
+## 6. Architecture
 
-The threshold should be regarded as a workload-dependent experimental setting, not a universal optimum.
+The following is a **conceptual architecture based on the README's description of the public interface and components**. It is not a verified source-code call graph; update it after checking the actual imports and control flow.
+
+![RCT conceptual architecture](docs/architecture.mmd)
+
+The diagram source is also available at [`docs/architecture.mmd`](docs/architecture.mmd).
 
 ## 7. Benchmark methodology and results
 
-### Experimental environment
+### Experimental setup
 
-- GPU: NVIDIA GeForce RTX 2050
-- GPU memory: 4 GB
+- GPU: NVIDIA GeForce RTX 2050 (4 GB)
 - Model: RCT 100M
 - Prompt length: 32 tokens
 - Generated tokens: 8
 - Timed repetitions: 30 per workload per session
-- Methods: KV generation and automatic adaptive inference
-
-The benchmark suite uses paired measurements and repeated sessions to evaluate performance differences.
+- Compared paths: KV generation and automatic adaptive inference
+- Reported multi-session analysis: 8 independent sessions
 
 Speedup is defined as:
 
-`KV latency / AUTO latency`
+`KV median latency / AUTO median latency`
 
-Therefore:
+Thus, speedup above 1.0 means AUTO was faster; below 1.0 means KV was faster. A confidence interval containing 1.0 is treated as inconclusive.
 
-- Speedup greater than 1.0 means AUTO is faster.
-- Speedup below 1.0 means KV is faster.
-- A confidence interval containing 1.0 is treated as inconclusive.
+### Eight-session hierarchical-bootstrap results
 
-### Multi-session hierarchical bootstrap
+Reported analysis settings: 10,000 hierarchical bootstrap iterations, random seed 42, sessions resampled at the session level and repetitions resampled within selected sessions; 95% percentile confidence intervals.
 
-Eight independent benchmark sessions were analyzed using hierarchical bootstrap resampling:
-
-- 10,000 bootstrap iterations.
-- Random seed: 42.
-- Sessions resampled at the session level.
-- Repetitions resampled within selected sessions.
-- 95% percentile confidence intervals.
-
-Results:
-
-| Batch | Prefix | Median speedup | Hierarchical 95% CI | Interpretation |
+| Batch | Shared prefix | Median speedup | 95% CI | Interpretation |
 |---:|---:|---:|---:|---|
-| 2 | 8 | 1.0024x | [0.9659, 1.0257] | Inconclusive |
-| 2 | 16 | 0.9916x | [0.9542, 1.0287] | Inconclusive |
-| 2 | 24 | 1.0121x | [0.9719, 1.0543] | Inconclusive |
-| 4 | 8 | 1.0118x | [0.9852, 1.0442] | Inconclusive |
-| 4 | 16 | 1.0213x | [0.9841, 1.1219] | Inconclusive |
-| 4 | 24 | 1.0862x | [1.0217, 1.1478] | AUTO faster |
-| 8 | 8 | 0.9996x | [0.9808, 1.0191] | Inconclusive |
-| 8 | 16 | 0.9867x | [0.9698, 1.0099] | Inconclusive |
-| 8 | 24 | 1.1443x | [1.1068, 1.1780] | AUTO faster |
+| 2 | 8 | 1.0024× | [0.9659, 1.0257] | Inconclusive |
+| 2 | 16 | 0.9916× | [0.9542, 1.0287] | Inconclusive |
+| 2 | 24 | 1.0121× | [0.9719, 1.0543] | Inconclusive |
+| 4 | 8 | 1.0118× | [0.9852, 1.0442] | Inconclusive |
+| 4 | 16 | 1.0213× | [0.9841, 1.1219] | Inconclusive |
+| 4 | 24 | 1.0862× | [1.0217, 1.1478] | AUTO faster |
+| 8 | 8 | 0.9996× | [0.9808, 1.0191] | Inconclusive |
+| 8 | 16 | 0.9867× | [0.9698, 1.0099] | Inconclusive |
+| 8 | 24 | 1.1443× | [1.1068, 1.1780] | AUTO faster |
 
-These results provide workload-specific evidence of improvements for batch 4 / prefix 24 and batch 8 / prefix 24 in the eight-session dataset.
-
-They do not establish general speedups across arbitrary workloads.
+These results are workload-specific evidence from the reported eight-session dataset. They do not establish general speedups across arbitrary prompt structures, batch sizes, or hardware.
 
 ### Latest post-implementation confirmation
 
-A subsequent benchmark was performed after modifying the shared-prefix cache-copy implementation.
+A later benchmark was performed after a change to the shared-prefix cache-copy implementation.
 
-| Batch | Prefix | KV median (ms) | AUTO median (ms) | Speedup | 95% CI |
-|---:|---:|---:|---:|---:|---:|
-| 4 | 24 | 127.091 | 124.688 | 1.0049x | [0.9783, 1.0405] |
-| 8 | 24 | 142.745 | 130.612 | 1.0781x | [1.0539, 1.1246] |
+| Batch | Prefix | KV median (ms) | AUTO median (ms) | Speedup | 95% CI | Interpretation |
+|---:|---:|---:|---:|---:|---:|---|
+| 4 | 24 | 127.091 | 124.688 | 1.0049× | [0.9783, 1.0405] | Inconclusive |
+| 8 | 24 | 142.745 | 130.612 | 1.0781× | [1.0539, 1.1246] | AUTO faster |
 
-In this latest run:
+The confirmation run supports a batch 8 / prefix 24 improvement; batch 4 / prefix 24 is inconclusive. This is not proof that the cache-copy code change caused the difference. A controlled before-and-after experiment is needed to isolate that change.
 
-- Batch 8 / prefix 24 showed a statistically supported improvement.
-- Batch 4 / prefix 24 was inconclusive.
-- The other tested workloads were also inconclusive.
+### How to read the charts
 
-This is a confirmation of workload-specific behavior, not proof that the cache-copy modification caused the observed performance difference. A controlled before-and-after experiment is still required to isolate the effect of that code change.
+- `assets/benchmark_multisession.png` shows the eight-session speedups and 95% confidence intervals.
+- `assets/benchmark_confirmation.png` shows the later confirmation run separately.
+- The two experiments are deliberately not pooled.
+- The confidence intervals are reported as unadjusted for testing multiple workloads; interpret them accordingly.
 
-### Benchmark interpretation
+## 8. GPU profiling
 
-The results demonstrate why adaptive inference policies should be conservative.
+The reported profiling workload used batch size 8, 32-token prompts, a 24-token shared prefix, and 8 generated tokens. PyTorch Profiler was used with CPU/CUDA activities, shape recording, and memory profiling.
 
-A workload-specific optimization should only be selected when repeated measurements provide sufficient evidence. Otherwise, the implementation should fall back to a reliable baseline inference path.
+The investigation examined attention tensor shapes, KV-cache operations, tensor copies and concatenation, CUDA operator activity, and memory allocation behavior.
 
-The reported confidence intervals are unadjusted for testing multiple workloads and should be interpreted accordingly.
-
-## 8. GPU profiling and memory analysis
-
-RCT inference workloads were profiled using PyTorch Profiler with CPU and CUDA activities, shape recording, and memory profiling.
-
-Profiled workload:
-
-- Batch size: 8
-- Prompt length: 32 tokens
-- Shared prefix: 24 tokens
-- New tokens: 8
-
-The profiler traces include:
-
-- KV inference
-- Shared-prefix inference
-- Automatic inference
-
-The profiling investigation examined:
-
-- Attention tensor shapes.
-- Key/value cache operations.
-- Tensor copies and concatenation.
-- CUDA operator activity.
-- Memory allocation behavior.
-
-### Initial observations
-
-The shared-prefix path processes the non-shared suffix separately from the common prefix.
-
-Profiling also identified cache-copy operations and concatenation allocations that may be worth investigating in future optimization work.
-
-Approximate peak allocated GPU memory during the profiled workloads:
+Reported approximate peak allocated GPU memory:
 
 | Mode | Peak allocated memory |
 |---|---:|
@@ -282,38 +211,25 @@ Approximate peak allocated GPU memory during the profiled workloads:
 | Prefix | 885.541 MB |
 | AUTO | 885.541 MB |
 
-These are profiler-observed measurements for the tested workload, not general memory requirements for every configuration.
-
-The investigation suggests possible opportunities to reduce intermediate allocation overhead, but no general memory reduction or additional speedup is claimed.
+These are profiler-observed values for the specified workload, not general memory requirements. The investigation identified cache-copy and concatenation allocations as possible optimization targets; no general memory reduction is claimed.
 
 ## 9. Correctness and validation
 
-The project includes tests covering Transformer behavior, KV caching, shared-prefix generation, adaptive inference and computation reuse.
+The project reports tests covering Transformer behavior, KV caching, shared-prefix generation, adaptive inference, and computation reuse.
 
-The adaptive prefix gate test reports:
+Reported adaptive prefix-gate result:
 
 ```text
 RCT ADAPTIVE PREFIX GATE TEST: PASS (12/12)
 ```
 
-Validation includes:
+The described validation includes shared-prefix detection, inference-path selection, fallback behavior for unsupported workloads, output agreement checks, prompt/generation length restrictions, and gate statistics.
 
-- Shared-prefix detection.
-- Prefix-versus-KV inference selection.
-- Automatic fallback for unsupported workloads.
-- Output agreement between automatic and KV generation.
-- Prompt-length and generation-length restrictions.
-- Gate activation and bypass statistics.
+Floating-point operations may produce small numerical differences. Tests should distinguish tolerance-based numerical agreement from bitwise equality.
 
-Additional inference tests have checked standard generation, KV generation, shared-prefix generation and exact-prompt behavior.
+## 10. Environment
 
-Floating-point operations may produce small numerical differences even when outputs are numerically equivalent. Tests should distinguish numerical tolerance from bitwise equality.
-
-## 10. Hardware and software environment
-
-Current development environment:
-
-| Component | Configuration |
+| Component | Reported configuration |
 |---|---|
 | Operating system | Windows |
 | Python | 3.12.7 |
@@ -323,17 +239,14 @@ Current development environment:
 | CUDA build | 12.6 |
 | Development shell | Windows PowerShell |
 
-The project has primarily been developed and tested on a single local GPU.
+The project has primarily been developed and tested on one local GPU. Multi-GPU and cross-architecture validation remain future work.
 
-Multi-GPU and cross-architecture validation remain future work.
+## 11. Repository layout
 
-## 11. Repository structure
-
-Representative project structure:
+The following is the representative structure supplied in the project notes; it is not an exhaustive directory listing.
 
 ```text
-rct-project/
-│
+RCT/
 ├── config.py
 ├── train.py
 ├── train_100m.py
@@ -341,7 +254,6 @@ rct-project/
 ├── inference.py
 ├── README.md
 ├── requirements.txt
-│
 ├── model/
 │   ├── transformer.py
 │   ├── reusable_block.py
@@ -356,28 +268,16 @@ rct-project/
 │   ├── rct_100m_kv.py
 │   ├── rct_100m_prefix.py
 │   └── rct_100m_prefix_generation.py
-│
 ├── benchmarks/
-│   ├── test_rct_adaptive_prefix_gate.py
-│   ├── benchmark_rct_adaptive_prefix_gate.py
-│   └── ...
-│
 ├── tests/
-│   ├── test_kv_cache.py
-│   ├── test_shared_prefix.py
-│   ├── test_adaptive_reuse.py
-│   └── ...
-│
-├── checkpoints/          # Excluded from Git
-├── data/                 # Excluded from Git
-└── results/              # Excluded from Git
+├── docs/
+├── assets/
+├── checkpoints/   # excluded from Git
+├── data/          # excluded from Git
+└── results/       # excluded from Git
 ```
 
-The structure is representative rather than an exhaustive listing of every experimental module.
-
-## 12. Reproducibility
-
-The source code and tests are maintained in Git.
+## 12. Reproduction notes
 
 Clone the repository:
 
@@ -393,57 +293,48 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-Install the project dependencies:
+Install dependencies:
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-Obtain a compatible model checkpoint separately, then configure the checkpoint path for the desired experiment.
+Obtain a compatible model checkpoint separately, then configure the checkpoint path for the desired experiment. Run the tests and benchmark scripts using the commands documented in those scripts.
 
-Run the relevant tests and benchmarks using their documented commands.
-
-**Reproducibility note:** The current dependency file and experiment scripts should be checked together before claiming a complete clean-machine reproduction. CUDA-enabled PyTorch installation may require a hardware-compatible installation command.
+**Reproducibility caveat:** Before advertising a one-command reproduction, verify the dependency file, exact benchmark entry points, checkpoint acquisition instructions, random seeds, warm-up procedure, synchronization, and output locations on a clean environment. CUDA-enabled PyTorch installation may require a hardware-compatible installation command.
 
 ## 13. Limitations
 
-RCT is an experimental research and engineering prototype.
-
-Current results do not establish:
+RCT is an experimental research and engineering prototype. Current results do not establish:
 
 - General speedups across arbitrary inference workloads.
-- Performance improvements across different GPU architectures.
+- Improvements across different GPU architectures.
 - Better language-model quality than comparable baselines.
 - A universal reduction in computational complexity.
 - Production readiness.
 - Superiority over established inference frameworks.
 
-The current benchmark evidence is workload-specific and primarily based on one GPU.
+The benchmark evidence is workload-specific and primarily based on one GPU. The adaptive policy needs validation across more prompt lengths, generation lengths, batch sizes, and hardware configurations. The reported confidence intervals are not adjusted for multiple workload comparisons.
 
-The adaptive policy requires further validation across prompt lengths, generation lengths, batch sizes, and hardware configurations.
+## 14. Future work
 
-## 14. Future development
-
-Planned engineering and research directions:
-
-1. Consolidate documentation for individual computation-reuse mechanisms.
-2. Expand regression testing across all inference modes.
-3. Revalidate the final adaptive prefix policy using additional benchmark sessions.
-4. Evaluate more prompt lengths and generation lengths.
-5. Investigate GPU memory allocation and cache-copy overhead.
-6. Compare against standard Transformer inference under identical conditions.
-7. Evaluate model quality and generation behavior.
-8. Explore modern C++ and CUDA kernel implementations.
+1. Revalidate the final adaptive prefix policy with additional independent sessions.
+2. Expand tests across all inference modes and edge cases.
+3. Evaluate more prompt lengths, generation lengths, batch sizes, and prefix distributions.
+4. Investigate GPU memory allocation, cache-copy, and concatenation overhead.
+5. Compare against standard Transformer inference under identical conditions.
+6. Report throughput, memory, and latency trade-offs.
+7. Evaluate generation quality and output behavior.
+8. Explore optimized C++/CUDA kernels.
 9. Investigate cross-GPU and multi-GPU behavior.
+10. Document exact commands and clean-environment reproduction.
 
 ---
 
 ## Project summary
 
-**RCT — Reusable Computation Transformer**
+**RCT — Reusable Computation Transformer** is an independently developed Transformer inference research project exploring exact computation reuse, adaptive deduplication, KV caching, shared-prefix generation, and benchmark-guided inference selection.
 
-An independently developed Transformer inference research project exploring exact computation reuse, adaptive deduplication, KV caching, shared-prefix generation, and benchmark-guided inference selection.
-
-The core 100M model and experimental inference mechanisms are implemented. Work continues on performance validation, reproducibility, GPU profiling, and broader engineering evaluation.
+The model and experimental inference mechanisms are implemented. Work continues on performance validation, reproducibility, GPU profiling, and broader engineering evaluation.
 
 **Repository:** https://github.com/ManishaChindam0309/RCT
